@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAN File Sharing</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        .file-list { margin-top: 20px; }
+        .drop-area {
+            width: 300px; height: 100px; border: 2px dashed #333;
+            margin: auto; padding: 10px; cursor: pointer;
+        }
+        .file-item { display: flex; justify-content: space-between; width: 300px; margin: auto; padding: 5px; }
+        .delete-btn { background-color: red; color: white; border: none; padding: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>LAN File Sharing</h1>
+    
+    <div class="drop-area" id="drop-area">
+        <p>Drag & Drop Files Here</p>
+    </div>
+    <input type="file" id="file-input" multiple hidden>
+    <button onclick="document.getElementById('file-input').click()">Select Files</button>
+    
+    <div class="file-list">
+        <h2>Available Files:</h2>
+        <ul id="file-list">
+            {% for file in files %}
+                <li class="file-item" id="file-{{ file }}">
+                    <a href="/download/{{ file }}">{{ file }}</a>
+                    <button class="delete-btn" onclick="deleteFile('{{ file }}')">Delete</button>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <script>
+        var socket = io();
+
+        function uploadFile(file) {
+            let formData = new FormData();
+            formData.append("file", file);
+
+            fetch('/upload', { method: "POST", body: formData })
+                .then(response => response.text())
+                .then(result => console.log(result))
+                .catch(error => console.error("Error:", error));
+        }
+
+        document.getElementById('file-input').addEventListener('change', function(event) {
+            for (let file of event.target.files) uploadFile(file);
+        });
+
+        document.getElementById('drop-area').addEventListener('dragover', function(event) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+        });
+
+        document.getElementById('drop-area').addEventListener('drop', function(event) {
+            event.preventDefault();
+            for (let file of event.dataTransfer.files) uploadFile(file);
+        });
+
+        function deleteFile(filename) {
+            fetch(`/delete/${filename}`, { method: "POST" })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.message) {
+                        let fileElement = document.getElementById(`file-${filename}`);
+                        if (fileElement) fileElement.remove();
+                    } else {
+                        alert("Error: " + data.error);
+                    }
+                });
+        }
+
+        socket.on('file_updated', function(filename) {
+            let fileList = document.getElementById('file-list');
+            let newFile = document.createElement('li');
+            newFile.id = `file-${filename}`;
+            newFile.className = "file-item";
+            newFile.innerHTML = `<a href="/download/${filename}">${filename}</a>
+                                <button class="delete-btn" onclick="deleteFile('${filename}')">Delete</button>`;
+            fileList.appendChild(newFile);
+        });
+
+        socket.on('file_deleted', function(filename) {
+            let fileElement = document.getElementById(`file-${filename}`);
+            if (fileElement) fileElement.remove();
+        });
+    </script>
+</body>
+</html>
